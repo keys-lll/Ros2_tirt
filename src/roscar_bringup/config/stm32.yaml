@@ -1,0 +1,12 @@
+# Native STM32 forward is opposite the chosen laser-aligned ROS forward.
+# Proper rotation about +Z: rotate BOTH X and Y; preserve yaw/Z quantities.
+# Set 0.0 to restore native axes. Restart the full mapping/odometry stack after changes.
+/**:
+  ros__parameters:
+    chassis_yaw_offset: 3.141592653589793
+    max_vx: 0.38
+    max_vy: 0.38
+    max_wz: 1.4
+    # Lower yaw-rate measurement variance makes EKF trust IMU gyro more.
+    # Conservative initial tuning; validate with motion and vibration.
+    imu_yaw_rate_variance: 0.005

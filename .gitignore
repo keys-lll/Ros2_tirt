@@ -1,0 +1,11 @@
+/build/
+/install/
+/log/
+/test_logs/
+__pycache__/
+*.pyc
+.pytest_cache/
+*.before*
+*.bak
+*~
+

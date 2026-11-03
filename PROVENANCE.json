@@ -1,0 +1,19 @@
+{
+  "created": "2026-11-03",
+  "source_workspace": "/home/leo/mecanum_ros2",
+  "packages": {
+    "auto": "src/auto",
+    "car_waypoints": "src/car_waypoints",
+    "mecanum_navigation": "src/mecanum_navigation",
+    "keyboard_control": "src/roscar/keyboard_control",
+    "lslidar_driver": "src/roscar/lslidar_driver",
+    "lslidar_msgs": "src/roscar/lslidar_msgs",
+    "roscar_bringup": "src/roscar/roscar_bringup",
+    "roscar_description": "src/roscar/roscar_description",
+    "stm32": "src/roscar/stm32",
+    "zbar_opencv": "src/zbar_opencv"
+  },
+  "tf2_core_version": "0.25.24",
+  "tf2_platform": "Ubuntu 22.04 arm64 / ROS Humble",
+  "notes": "Copied active sources; historical backups, build outputs and test bags excluded. Bundle-only TIRT_WORKSPACE path adaptation."
+}

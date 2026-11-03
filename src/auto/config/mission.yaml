@@ -1,0 +1,13 @@
+# 比賽任務設定。每個欄位都可以省略，省略就用這裡寫的預設值。
+# 改完重新執行 ros2 run auto mission 就生效，不用重新 colcon build。
+
+# 點位檔：用 wp_record 記錄的檔案
+
+# 到桌子（紅框）後靜止的秒數；簡章要求穩定停留 3 秒
+stop_seconds: 3.0
+
+# 7 個點在點位檔裡的名稱：出發區、備餐區、1~5 號桌（可以改成自己的名字）
+points:
+  start: start
+  prep: prep
+  tables: [t1, t2, t3, t4, t5]

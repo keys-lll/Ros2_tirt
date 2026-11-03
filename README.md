@@ -24,10 +24,12 @@ sudo apt install python3-colcon-common-extensions python3-rosdep python3-yaml \
 ## 編譯
 
 ```bash
-git clone https://github.com/keys-lll/Ros2_tirt.git
-cd Ros2_tirt
+git clone https://github.com/keys-lll/Ros2_tirt.git "$HOME/Ros2_tirt"
+cd "$HOME/Ros2_tirt"
 bash scripts/build.sh
 ```
+
+請使用上述英文工作區路徑；本次測試中 Humble 的 rosidl 在中文父目錄下產生介面時會出現路徑解析錯誤。
 
 ## 分開啟動
 

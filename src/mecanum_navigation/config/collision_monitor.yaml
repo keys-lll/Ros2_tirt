@@ -1,0 +1,57 @@
+# All-around stop zone: 0.08 m outside the currently calibrated bracket-mask bounds.
+# Bracket reference in base_link: x=[-0.24, 0.1], y=[-0.2, 0.2] m.
+# Coordinate directions, TF, chassis alignment, and FrontSlow are unchanged.
+# FrontStop is the historical name for this all-around stop polygon.
+collision_monitor:
+  ros__parameters:
+    use_sim_time: false
+    base_frame_id: base_link
+    odom_frame_id: odom
+    cmd_vel_in_topic: /cmd_vel
+    cmd_vel_out_topic: /cmd_vel_safe
+    base_shift_correction: true
+    transform_tolerance: 0.2
+    source_timeout: 0.5
+    stop_pub_timeout: 1.0
+    polygons:
+    - FrontStop
+    - FrontSlow
+    FrontStop:
+      type: polygon
+      points:
+      - 0.18
+      - 0.28
+      - 0.18
+      - -0.28
+      - -0.32
+      - -0.28
+      - -0.32
+      - 0.28
+      action_type: stop
+      max_points: 0
+      visualize: true
+      polygon_pub_topic: front_stop_zone
+      enabled: true
+    FrontSlow:
+      type: polygon
+      points:
+      - 0.07
+      - 0.16
+      - 0.42
+      - 0.16
+      - 0.42
+      - -0.16
+      - 0.07
+      - -0.16
+      action_type: slowdown
+      max_points: 0
+      slowdown_ratio: 0.4
+      visualize: true
+      polygon_pub_topic: front_slow_zone
+      enabled: true
+    observation_sources:
+    - scan
+    scan:
+      type: scan
+      topic: /scan
+      enabled: true
