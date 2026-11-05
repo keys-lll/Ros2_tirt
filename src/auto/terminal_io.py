@@ -1,4 +1,4 @@
-"""Terminal QR/Enter operator; camera runs only at stopped handoffs."""
+"""Terminal QR/Enter operator; camera runs from startup, QR accepted at handoffs."""
 import os
 import queue
 import signal
@@ -14,7 +14,7 @@ from std_msgs.msg import String
 
 
 class CameraStream:
-    """Own the camera/QR launch only while a stopped handoff needs it."""
+    """Own the camera/QR launch until the terminal operator closes."""
 
     def __init__(self, events, command=None):
         self.events = events
@@ -99,7 +99,8 @@ class CameraStream:
 class TerminalOperator:
     def __init__(self):
         self.events = queue.Queue()
-        self.codes = queue.Queue()
+        self.codes = queue.Queue(maxsize=50)
+        self.accepting_qr = threading.Event()
         self.keyboard = queue.Queue()
         self.stop_event = threading.Event()
         self.eof = False
@@ -112,6 +113,7 @@ class TerminalOperator:
         self.thread.start()
         self.keyboard_thread = threading.Thread(target=self.read_terminal, daemon=True)
         self.keyboard_thread.start()
+        self.camera.set_active(True)
 
     def read_terminal(self):
         for line in sys.stdin:
@@ -144,7 +146,12 @@ class TerminalOperator:
             print('請按 Enter 重新開始，或輸入 q 結束。', flush=True)
 
     def qr(self, msg):
-        self.codes.put((time.monotonic(), msg.data.strip()))
+        if not self.accepting_qr.is_set():
+            return
+        try:
+            self.codes.put_nowait((time.monotonic(), msg.data.strip()))
+        except queue.Full:
+            pass
 
     @staticmethod
     def needs_camera(prompt):
@@ -153,13 +160,15 @@ class TerminalOperator:
         ))
 
     def ask(self, prompt):
+        self.accepting_qr.clear()
         started = time.monotonic()
         scanning = self.needs_camera(prompt)
         if scanning:
+            self.accepting_qr.set()
             self.camera.set_active(True)
         print(prompt, flush=True)
         if scanning:
-            print('相機／QR 啟動中：掃 QR 自動繼續；Enter 手動放行；q + Enter 中止。', flush=True)
+            print('相機／QR 持續運作：掃 QR 自動繼續；Enter 手動放行；q + Enter 中止。', flush=True)
         try:
             while True:
                 if self.stop_event.is_set():
@@ -191,12 +200,10 @@ class TerminalOperator:
                 except queue.Empty:
                     pass
         finally:
-            if scanning:
-                self.camera.set_active(False)
-                self.camera.stopped.wait()
-                print('相機／QR 已關閉。', flush=True)
+            self.accepting_qr.clear()
 
     def close(self):
+        self.accepting_qr.clear()
         self.camera.close()
         self.executor.shutdown()
         self.thread.join(timeout=3)

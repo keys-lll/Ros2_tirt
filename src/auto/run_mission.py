@@ -6,12 +6,15 @@ Delivery competition mission with terminal table selection.
     ros2 run auto run_mission
 
 終端機啟動時自動讀取 car_waypoints 的 waypoints.yaml，列出所有已記錄點位。
-直接輸入已記錄的桌號（1～5）：先回 start，再按 Enter 出發帶位。
+直接輸入已記錄的桌號（1～5），按 Enter 出發帶位，不先導航到 start。
 後續依序帶位、固定餐、加點餐，第二回合換區。
 點餐、加點到桌邊後開相機，掃 QR 或 Enter 放行；最後返回 start 前只按 Enter。
+prep 按 Enter 出發；第一趟 none 仍去 prep，第二趟 none 返回 start 後重新選桌。
 q + Enter 可中止導航或等待；結束後 Enter 重新開始。
 """
 import math
+import os
+from ament_index_python.packages import get_package_share_directory
 import time
 from typing import NamedTuple
 
@@ -45,6 +48,7 @@ LEG_LIMIT_WITH_OBSTACLES = 120    # 有障礙物
 FRONT_TABLES = (1, 4)
 BACK_TABLES = (2, 3, 5)
 QUIT = ('q', 'quit')
+MISSION_FINISHED = 2  # Current flow ended at start; terminal immediately returns to table selection.
 NAMES = ('start', 'prep', 't1', 't2', 't3', 't4', 't5')
 
 
@@ -58,6 +62,10 @@ class NavResult(NamedTuple):
     @property
     def ok(self):
         return self.outcome == 'SUCCEEDED'
+
+
+class MissionFinished(Exception):
+    """A table-side none card ended the current flow after returning to start."""
 
 
 class MissionAborted(Exception):
@@ -145,6 +153,15 @@ class Mission:
             raise MissionAborted('操作手結束')
         return answer
 
+    def ask_table_side(self, prompt):
+        """A second-trip none QR/card returns to start and ends the current flow."""
+        answer = self.ask_line(prompt)
+        if answer.casefold() == 'none':
+            self.say('桌邊收到 none，直接返回 start，之後重新選桌')
+            self.go('start')
+            raise MissionFinished('已返回 start，請重新選桌')
+        return answer
+
     def ask_table(self, prompt, allowed=(1, 2, 3, 4, 5), allow_blank=False):
         """Ask for a table number until it is one of `allowed`; None if blank is allowed."""
         while True:
@@ -214,23 +231,13 @@ class Mission:
         if not usable:
             self.say('1~5 號桌都還沒設定座標，比賽流程沒辦法跑')
             return False
-        if not select_first and (self.prepare_start is not None or self.start_before_table):
-            if self.prepare_start is not None:
-                self.prepare_start()
-            self.say('比賽流程先前往 start')
-            self.go('start')
+        if not select_first and self.prepare_start is not None:
+            self.prepare_start()
         prompt = (f'要去哪一桌？（已記錄桌號 {"、".join(map(str, usable))}；q 結束）> '
                   if select_first else
                   f'第一回合抽到幾桌（可選 {"、".join(map(str, usable))}，q 結束）> ')
         first = self.ask_table(prompt, allowed=usable)
-        if select_first:
-            self.say(f'已選 {first} 號桌，先回 start 準備比賽')
-            self.go('start')
-        elif self.prepare_start is None and not self.start_before_table:
-            # Preserve the standalone CLI's manual localization/start confirmation.
-            self.say('比賽流程要從 start 開始，先回到 start')
-            self.ask_line('按 Enter 先回 start（q 結束）> ')
-            self.go('start')
+        self.say(f'已選 {first} 號桌，按 Enter 出發')
         self.run_round(first)
         allowed = tuple(n for n in allowed_second_tables(first) if n in usable)
         if not allowed:
@@ -266,22 +273,28 @@ class Mission:
         self.say(f'靜止 {self.stop_seconds:g} 秒…')
         self.sleep(self.stop_seconds)
 
+    def wait_at_prep(self, message):
+        """Wait for the operator to finish loading; q remains available."""
+        self.say(message)
+        while self.ask_line('備餐完成後按 Enter 出發（q 結束）> '):
+            self.say('請直接按 Enter 出發，或輸入 q 結束')
+
     def run_round(self, table):
         """Trip 1 seat the guest, trip 2 deliver the set meal, trip 3 deliver the extra order."""
         spot = f't{table}'
 
         self.say(f'===== 第一趟 帶位到 {table} 號桌 =====')
-        self.ask_line(f'車子在 start。按 Enter 出發帶位到 {table} 號桌（q 結束）> ')
+        self.ask_line(f'按 Enter 出發帶位到 {table} 號桌（q 結束）> ')
         self.go(spot)
         self.hold()
         order = self.ask_line('請裁判給點餐卡，輸入點餐內容（可直接按 Enter 略過）> ')
         self.go('prep')
 
         self.say(f'===== 第二趟 送固定餐到 {table} 號桌 =====')
-        self.ask_line(f'請把餐點放上托盤（點餐：{order or "未輸入"}），按 Enter 出發送到 {table} 號桌 > ')
+        self.wait_at_prep(f'請把餐點放上托盤（點餐：{order or "未輸入"}），即將出發送到 {table} 號桌')
         self.go(spot)
         self.hold()
-        extra = self.ask_line('請裁判給加點卡，輸入加點項目（可樂 / 橘子果汁 / 白開水；Enter 略過）> ')
+        extra = self.ask_table_side('請裁判給加點卡，輸入加點項目（可樂 / 橘子果汁 / 白開水；Enter 略過）> ')
         if not extra.strip():
             self.say('沒有掃到加點 QR Code，返回起始點')
             self.go('start')
@@ -290,7 +303,7 @@ class Mission:
         self.go('prep')
 
         self.say(f'===== 第三趟 送加點餐到 {table} 號桌 =====')
-        self.ask_line(f'請放上加點餐點（{extra or "未輸入"}），按 Enter 出發送到 {table} 號桌 > ')
+        self.wait_at_prep(f'請放上加點餐點（{extra or "未輸入"}），即將出發送到 {table} 號桌')
         self.go(spot)
         self.hold()
         while self.ask_line('桌邊作業完成，按 Enter 返回 start（q 結束）> '):
@@ -353,7 +366,12 @@ class Navigator(BasicNavigator):
         if getattr(self, 'abort_requested', lambda: False)():
             return NavResult('CANCELED', '操作手中止任務')
         goal = pose_from_point(point, MAP_FRAME, self.get_clock().now().to_msg())
-        if not self.goToPose(goal):
+        if name == 'prep':
+            tree = os.path.join(get_package_share_directory('mecanum_navigation'), 'config', 'navigate_prep.xml')
+            accepted = self.goToPose(goal, behavior_tree=tree)
+        else:
+            accepted = self.goToPose(goal)
+        if not accepted:
             return NavResult('FAILED', f'Nav2 拒絕了前往 {name} 的目標')
         started = time.monotonic()
         last_print = 0.0
@@ -395,6 +413,9 @@ def run(node, points, ask=input, say=print, sleep=time.sleep, prepare_start=None
             mission.run_rounds(select_first=True)
         else:
             mission.run()
+    except MissionFinished as e:
+        say(str(e))
+        return MISSION_FINISHED
     except MissionAborted as e:
         say(f'任務結束：{e}')
     return 0
@@ -416,6 +437,8 @@ def main():
         while True:
             result = run(node, all_points(recorded_only=True), ask=operator.ask,
                          sleep=interruptible_sleep, select_table=True)
+            if result == MISSION_FINISHED:
+                continue
             if not operator.restart_requested():
                 return result
     except KeyboardInterrupt:

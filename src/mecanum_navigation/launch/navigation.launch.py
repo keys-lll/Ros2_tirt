@@ -1,4 +1,5 @@
 import os
+import copy
 import math
 import tempfile
 import yaml
@@ -45,6 +46,15 @@ def generate_launch_description():
     actions.append(DeclareLaunchArgument('map', description='Absolute path to a saved map YAML (required)'))
     def start_navigation(context):
         params_file = os.path.join(pkg, 'config', 'nav2_params.yaml')
+        with open(params_file) as stream:
+            config = yaml.safe_load(stream)
+        controller = config['controller_server']['ros__parameters']
+        prep_settings = copy.deepcopy(controller['FollowPath'])
+        prep_settings.update(controller['FollowPathPrep'])
+        controller['FollowPathPrep'] = prep_settings
+        bt = config['bt_navigator']['ros__parameters']
+        bt['default_nav_to_pose_bt_xml'] = os.path.join(pkg, 'config', 'navigate_default.xml')
+        bt['default_nav_through_poses_bt_xml'] = os.path.join(pkg, 'config', 'navigate_through_default.xml')
         name = LaunchConfiguration('initial_waypoint').perform(context)
         messages = []
         if name:
@@ -57,16 +67,14 @@ def generate_launch_description():
             pose = {key: float(point[key]) for key in ('x', 'y', 'yaw')}
             if not all(math.isfinite(value) for value in pose.values()):
                 raise RuntimeError('Initial waypoint contains nonfinite coordinates')
-            with open(params_file) as stream:
-                config = yaml.safe_load(stream)
             amcl = config['amcl']['ros__parameters']
             amcl['set_initial_pose'] = True
             amcl['always_reset_initial_pose'] = True
             amcl['initial_pose'] = dict(pose, z=0.0)
-            with tempfile.NamedTemporaryFile(mode='w', prefix='mecanum_nav_initial_', suffix='.yaml', delete=False) as stream:
-                yaml.safe_dump(config, stream, sort_keys=False)
-                params_file = stream.name
             messages.append(LogInfo(msg=f'Initial localization from {name}: {pose}. Robot must physically start at this pose.'))
+        with tempfile.NamedTemporaryFile(mode='w', prefix='mecanum_nav_runtime_', suffix='.yaml', delete=False) as stream:
+            yaml.safe_dump(config, stream, sort_keys=False)
+            params_file = stream.name
         return messages + [include('nav2_bringup', 'bringup_launch.py', {
             'map': LaunchConfiguration('map'), 'slam': 'False', 'use_sim_time': 'false',
             'params_file': params_file, 'autostart': 'true', 'use_composition': 'False',

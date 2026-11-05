@@ -1,6 +1,6 @@
 # Ros2_tirt
 
-ROS 2 Humble 麥克納姆輪送餐比賽工作區，整理自 2026-11-03 實車使用中的程式與設定。包含終端機比賽流程、Nav2、RViz、STM32 底盤、EKF、光達、車身遮蔽、相機／QR、點位記錄，以及 tf2 鎖死修正庫。
+ROS 2 Humble 麥克納姆輪送餐比賽工作區，同步至 2026-11-05 目前實車工作區的程式、地圖與設定。包含終端機比賽流程、Nav2、RViz、STM32 底盤、EKF、光達、車身遮蔽、相機／QR、點位記錄，以及 tf2 鎖死修正庫。
 
 ## 環境與依賴
 
@@ -47,7 +47,7 @@ bash scripts/run.sh nav
 bash scripts/run.sh mission
 ```
 
-任務載入所有記錄點，輸入 1～5 號桌後先回 start，再按 Enter 出發。點餐與加點步驟開啟相機、掃 QR 或按 Enter 放行；備餐區按 Enter 出發。加點步驟直接 Enter 表示不加點並回 start。送完加點後的最後桌邊步驟只接受 Enter 確認返回 start，不啟動 QR。`q` 加 Enter 中止任務，Ctrl+C 停止程式。相機不需第三個終端機。
+任務載入所有記錄點，輸入 1～5 號桌後按 Enter 出發，不先導航回 start。導航啟動腳本仍以 start 初始化定位，因此啟動導航時車子應放在 start。第一趟桌邊掃到 `none` 照常前往 prep；第二趟掃到 `none` 返回 start 後直接重新選桌，程式保留。每次 prep 都要按 Enter 才出發，沒有 6 秒自動出發。啟動 Python 任務程式時相機即開始運作，持續到程式結束；只有點餐／加點掃碼提示期間才接受 QR，掃到 QR 或按 Enter 放行。加點步驟直接 Enter 表示不加點並回 start。送完加點後的最後桌邊步驟按 Enter 返回 start，不啟動 QR。`q` 加 Enter 中止任務，Ctrl+C 停止程式。相機不需第三個終端機。
 
 日誌與錄製資料存於 `test_logs/日期時間_nav_*/`；`latest_test.txt` 指向最近一次導航。每次錄製保留當次導航參數及點位快照。請在導航終端機 Ctrl+C 結束，以完成 bag 寫入。
 
@@ -77,11 +77,16 @@ ros2 run keyboard_control keyboard_control
 
 | 項目 | 設定 |
 |---|---|
-| 平移速度上限 | 0.38 m/s |
+| 平移速度上限 | 0.35 m/s |
 | 旋轉速度上限 | 1.4 rad/s |
 | 控制頻率 | 20 Hz |
-| 到點位置／方向容許誤差 | 0.05 m／20 度 |
-| 膨脹半徑／衰減係數 | 0.30 m／1.5 |
+| 一般點位位置／方向容許誤差 | 0.05 m／20 度 |
+| prep goal checker 位置／方向容許誤差 | 0.08 m／3.14 rad |
+| prep DWB 位置容許值 | 0.10 m（與 checker 目前不同，照現況保存） |
+| 全域膨脹半徑／衰減係數 | 0.20 m／3.0 |
+| 局部膨脹半徑／衰減係數 | 0.30 m／1.0 |
+| 局部 costmap 更新頻率 | 10 Hz |
+| DWB ObstacleFootprint／PathAlign／RotateToGoal 權重 | 0.08／32／32 |
 | RotateToGoal 角度評分前瞻 | 0.5 秒 |
 | 車身 footprint | 長 0.25 m、寬 0.32 m |
 | 光達相對 base_link | x=0.12 m、z=0.23 m |
@@ -94,4 +99,4 @@ Nav2 設定為 `src/mecanum_navigation/config/nav2_params.yaml`；車身遮蔽�
 
 ## 驗證範圍
 
-整理時進行編譯與離線檢查；未自動啟動底盤或進行實車任務。TF 修正的既有離線 A/B 證據見 `docs/tf_deadlock_debug_20261102.md`；歷史報告中的原機路徑僅供追溯。
+初次整理時曾完成 10 套件編譯；本次更新進行 Python 語法、YAML/XML、路徑與終端流程的離線檢查，未重新完整編譯或自動進行實車任務。TF 修正的既有離線 A/B 證據見 `docs/tf_deadlock_debug_20261102.md`；歷史報告中的原機路徑僅供追溯。
