@@ -1,102 +1,128 @@
 # Ros2_tirt
 
-ROS 2 Humble 麥克納姆輪送餐比賽工作區，同步至 2026-11-05 目前實車工作區的程式、地圖與設定。包含終端機比賽流程、Nav2、RViz、STM32 底盤、EKF、光達、車身遮蔽、相機／QR、點位記錄，以及 tf2 鎖死修正庫。
+ROS 2 Humble 麥克納姆輪送餐專案，2026-11-06 實機來源快照。包含 10 個 ROS 套件、最新地圖／點位、Cartographer 建圖入口、終端機及淺色數字鍵 GUI、A/B 必經路線、相機／QR、底盤／EKF／光達與車身遮蔽。
 
-## 環境與依賴
+## 安裝與編譯
 
-目標環境為 Ubuntu 22.04 arm64／aarch64、ROS 2 Humble。內附的 `tf2_0.25.24/lib/libtf2.so` 是官方 arm64 套件的修正核心庫；不可直接拿到 x86 電腦使用。它只在本專案導航啟動的子程序內載入，不覆蓋系統套件。版權與來源見 `tf2_0.25.24/COPYRIGHT`、`PROVENANCE.json`。
-
-需已安裝 ROS 2 Humble 與 colcon。新機器可先安裝主要依賴（會修改系統，請由操作人執行）：
-
-```bash
-sudo apt install python3-colcon-common-extensions python3-rosdep python3-yaml \
-  python3-serial python3-numpy python3-opencv python3-pil python3-pil.imagetk python3-tk \
-  libpcap-dev libboost-thread-dev libzbar-dev libopencv-dev \
-  ros-humble-navigation2 ros-humble-nav2-bringup ros-humble-rviz2 \
-  ros-humble-robot-localization ros-humble-robot-state-publisher \
-  ros-humble-joint-state-publisher ros-humble-xacro ros-humble-laser-filters \
-  ros-humble-usb-cam ros-humble-cv-bridge ros-humble-image-transport \
-  ros-humble-pcl-conversions ros-humble-diagnostic-updater ros-humble-rosbag2
-```
-
-若有其他缺少的依賴，可在本目錄執行 `rosdep install --from-paths src --ignore-src -r -y --rosdistro humble`；先完成 rosdep 初始化。原專案部分套件的 license 欄位尚為 TODO，保留原始聲明，未另行宣稱授權。
-
-## 編譯
+目標為 Ubuntu 22.04 arm64、ROS 2 Humble。內附 tf2 0.25.24 核心庫為 arm64，來源與版權見 `tf2_0.25.24/COPYRIGHT`；不適用於 x86。導航啟動僅在子程序使用此修正庫，不覆蓋系統安裝。
 
 ```bash
 git clone https://github.com/keys-lll/Ros2_tirt.git "$HOME/Ros2_tirt"
 cd "$HOME/Ros2_tirt"
+source /opt/ros/humble/setup.bash
+rosdep install --from-paths src --ignore-src -r -y --rosdistro humble
 bash scripts/build.sh
 ```
 
-請使用上述英文工作區路徑；本次測試中 Humble 的 rosidl 在中文父目錄下產生介面時會出現路徑解析錯誤。
+需預先安裝 colcon、rosdep 並完成 rosdep 初始化。Ubuntu 桌面視窗排列另外使用 `gnome-terminal`、`python3-gi`、`gir1.2-wnck-3.0`；建圖另外需要 `ros-humble-cartographer-ros`。請使用英文工作區路徑，Humble rosidl 在中文父目錄可能產生介面路徑錯誤。
 
-## 分開啟動
+## 一條指令：導航＋GUI
 
-先停止其他工作區的導航與任務，將車放在已記錄的 start 位置與朝向。兩個終端機均進入本儲存庫目錄。
-
-終端機 1：導航、RViz、rosbag 與日誌
+先停止其他導航與任務，將車放在記錄的 start 位置及朝向。在儲存庫根目錄執行：
 
 ```bash
-bash scripts/run.sh nav
+bash diagnostics/start_competition.sh gui
 ```
 
-終端機 2：比賽終端機
+導航建立本次日誌且 Nav2 lifecycle 就緒後，才啟動 GUI。預設不開 RViz；GUI 置中、按鈕直排在右側。X11 桌面會自動把焦點與滑鼠移至 GUI。GUI 與終端機任務共用互斥鎖，避免同時控制車輛。
 
-```bash
-bash scripts/run.sh mission
-```
-
-任務載入所有記錄點，輸入 1～5 號桌後按 Enter 出發，不先導航回 start。導航啟動腳本仍以 start 初始化定位，因此啟動導航時車子應放在 start。第一趟桌邊掃到 `none` 照常前往 prep；第二趟掃到 `none` 返回 start 後直接重新選桌，程式保留。每次 prep 都要按 Enter 才出發，沒有 6 秒自動出發。啟動 Python 任務程式時相機即開始運作，持續到程式結束；只有點餐／加點掃碼提示期間才接受 QR，掃到 QR 或按 Enter 放行。加點步驟直接 Enter 表示不加點並回 start。送完加點後的最後桌邊步驟按 Enter 返回 start，不啟動 QR。`q` 加 Enter 中止任務，Ctrl+C 停止程式。相機不需第三個終端機。
-
-日誌與錄製資料存於 `test_logs/日期時間_nav_*/`；`latest_test.txt` 指向最近一次導航。每次錄製保留當次導航參數及點位快照。請在導航終端機 Ctrl+C 結束，以完成 bag 寫入。
-
-## 手動調點與記錄
-
-```bash
-nano src/car_waypoints/config/waypoints.yaml
-```
-
-第一行必須為 `waypoints:`。x、y 為地圖公尺座標，yaw 為弧度。新任務重新載入點位，原本已送出的導航目標不會隨檔案改動。
-
-需要重新記錄目前車位時，先啟動導航並確認定位：
-
-```bash
-source scripts/env.sh
-ros2 run car_waypoints wp_record
-```
-
-底盤遙控（不要與進行中的自主導航同時使用）：
-
-```bash
-source scripts/env.sh
-ros2 run keyboard_control keyboard_control
-```
-
-## 目前主要設定
-
-| 項目 | 設定 |
+| 數字鍵 | 操作 |
 |---|---|
-| 平移速度上限 | 0.35 m/s |
-| 旋轉速度上限 | 1.4 rad/s |
-| 控制頻率 | 20 Hz |
-| 一般點位位置／方向容許誤差 | 0.05 m／20 度 |
-| prep goal checker 位置／方向容許誤差 | 0.08 m／3.14 rad |
-| prep DWB 位置容許值 | 0.10 m（與 checker 目前不同，照現況保存） |
-| 全域膨脹半徑／衰減係數 | 0.20 m／3.0 |
-| 局部膨脹半徑／衰減係數 | 0.30 m／1.0 |
-| 局部 costmap 更新頻率 | 10 Hz |
-| DWB ObstacleFootprint／PathAlign／RotateToGoal 權重 | 0.08／32／32 |
-| RotateToGoal 角度評分前瞻 | 0.5 秒 |
-| 車身 footprint | 長 0.25 m、寬 0.32 m |
-| 光達相對 base_link | x=0.12 m、z=0.23 m |
+| 1～5 | 選擇目前可用桌號 |
+| 6 | 確認／繼續／手動放行／重試；任務結束後重新開始 |
+| 7 | 一般導航失敗時，確認已手動到位；A/B 失敗不提供跳過 |
+| 8 | 結束第二回合 |
+| 0 | 中止；任務結束後關閉 GUI |
 
-Nav2 設定為 `src/mecanum_navigation/config/nav2_params.yaml`；車身遮蔽為同目錄 `self_filter.yaml`。額外 collision monitor 未啟動，Nav2 仍使用 costmap／footprint 判斷碰撞。4 號桌仍包含原有的外側 35 公分對準步驟。
+數字列與數字小鍵盤皆可使用，所有按鈕均標示對應鍵位。相機隨任務程式啟動，持續到程式關閉；GUI 畫面相對收到的影像旋轉 180°。只有點餐／加點提示期間接受新 QR，GUI 按 6 可手動放行。
 
-地圖為 `maps/mecanum_map.yaml` 與對應 PGM；地圖原點與圖檔必須成對保留。RViz 預設顯示 Map、TF、AMCL、雷射、全域路徑，以及全域／局部 costmap。實車 USB serial-by-id、相機 `/dev/video0` 設定沿用原機，換機時請確認 `hardware.launch.py`、`navigation.launch.py` 與相機裝置。
+## 終端機與分開啟動
 
-透過腳本啟動時會設定 `TIRT_WORKSPACE`，因此點位、修正庫與地圖使用這個儲存庫自身檔案。直接使用 ros2 命令前請先 `source scripts/env.sh`。
+```bash
+# 一條指令啟動導航＋終端機任務
+bash diagnostics/start_competition.sh
+
+# 或在兩個終端機分開執行
+bash scripts/run.sh nav
+bash scripts/run.sh gui      # GUI
+# bash scripts/run.sh mission  # 終端機任務，與 GUI 擇一
+```
+
+終端機仍用桌號、Enter 繼續及 q 中止。`scripts/run.sh` 與名稱含 10hz 的 diagnostics 腳本都是啟動／記錄入口，不會強制覆寫 controller 頻率；以當前 YAML 為準。
+
+## 比賽流程
+
+導航啟動以 start 初始化定位；任務選桌後直接出發，不新增「先回 start」。
+
+- 進備餐區：目前位置 → b → a → prep。
+- 離開備餐區：prep → a → b → 目的地。
+- A/B 使用專用位置判定（3 cm、角度 pi），不要求車頭對正、不等人工輸入；逐點導航切換仍可能短暫減速。各段仍由 Nav2 避障規劃，未強制直線穿越。
+- 第一趟桌邊 `none` 仍去 prep；第二趟桌邊 `none` 返回 start 後立即重新選桌，程式保留。
+- prep 要人工確認才出發（GUI 6／終端機 Enter），沒有 6 秒自動出發。
+- 加點提示直接放行表示不加點，回 start；加點餐送完的最後桌邊步驟只需確認回 start。
+- t4 外側 35 cm 預備點已移除；表內 `t4` 為直接停靠點。
+
+## 建圖與存點
+
+```bash
+# 終端機 1：Cartographer，預設開建圖 RViz（競賽導航預設不開）
+bash scripts/mapping.sh
+
+# 終端機 2：將車開到位置後輸入名稱存點
+bash diagnostics/record_mapping_points.sh
+```
+
+| 點名 | 位置 |
+|---|---|
+| start | 起始點 |
+| prep | 備餐區停靠點 |
+| t1～t5 | 各桌停靠點，逐一記錄 |
+| a / A | 備餐區前方，統一存為 a |
+| b / B | 5 號桌旁，統一存為 b |
+
+A/B 記錄時不必刻意對車頭；檔案仍保留當時 yaw，任務的 A/B 專用控制器不要求到點方向。輸入 `list` 檢查，重輸同名點會覆寫，`q` 離開。點位在 `src/car_waypoints/config/waypoints.yaml`，單位 m/rad；存點與導航必須使用同一地圖座標系。建圖提供 map→base_link TF 後才能存點。
+
+儲存地圖（會更新本儲存庫 maps 下的地圖）：
+
+```bash
+source scripts/env.sh
+ros2 run nav2_map_server map_saver_cli -f "$TIRT_WORKSPACE/maps/mecanum_map"
+```
+
+## 當前參數快照
+
+| 參數 | 值 |
+|---|---|
+| 平移速度上限 | 0.25 m/s |
+| 角速度上限 | 1.4 rad/s |
+| controller／local costmap 頻率 | 20.0 / 10.0 Hz |
+| GoalAlign／PathAlign／RotateToGoal | 24.0 / 32.0 / 32.0 |
+| ObstacleFootprint.scale | 0.16 |
+| 全域膨脹半徑／衰減 | 0.2 m / 0.5 |
+| 局部膨脹半徑／衰減 | 0.35 m / 1.0 |
+| 一般 goal checker XY／yaw | 0.05 m / 3.14 rad |
+| prep goal checker XY／yaw | 0.05 m / 3.14 rad |
+| prep DWB XY | 0.05 m |
+
+以上依實機檔案整理，沒有在打包時另行調參。prep DWB 與 goal checker 的 XY 容許值仍不同，為目前來源現況。車身 footprint 為長 25 × 寬 32 cm；`self_filter.yaml` 包含完整車身遮蔽與既有支架遮蔽。額外 Collision Monitor 未啟動。
+
+## 地圖與 Keepout
+
+目前主地圖：`maps/mecanum_map.yaml`，解析度 0.05 m，原點 `[-7.18, -11.5, 0]`。
+
+Keepout：`maps/keepout.yaml`，原點 `[-1.79, -4.84, 0]`，**預設停用**。舊遮罩與現有地圖的原點不同，未重新對齊前不要直接啟用。`src/mecanum_navigation/maps/1031i_keepout.*` 為先前繪圖底稿，並非目前預設遮罩。
+
+## 檔案與紀錄
+
+- `src/`：10 套件實機來源。
+- `maps/`：當前主地圖與停用的 Keepout 遮罩。
+- `mapping/`：TIRT Cartographer 建圖啟動檔、Lua 設定與 RViz 設定。
+- `diagnostics/`：導航／GUI／終端機整合啟動與視窗配置、存點入口。
+- `scripts/`：工作區環境、編譯、分開啟動、建圖入口。
+- `test_logs/`：執行時才建立，含參數快照、rosbag 和各程序日誌，不納入 Git。
+
+`source scripts/env.sh` 會將 `TIRT_WORKSPACE` 指向此儲存庫，來源、地圖、點位與修正庫不依賴原機器的 `/home/leo` 路徑。USB serial-by-id、相機 `/dev/video0` 保留原機設定，換機需確認裝置。
 
 ## 驗證範圍
 
-初次整理時曾完成 10 套件編譯；本次更新進行 Python 語法、YAML/XML、路徑與終端流程的離線檢查，未重新完整編譯或自動進行實車任務。TF 修正的既有離線 A/B 證據見 `docs/tf_deadlock_debug_20261102.md`；歷史報告中的原機路徑僅供追溯。
+本次更新完成 Python 語法、YAML/XML、shell 與資源路徑檢查；任務與 GUI 已在開發時完成離線流程及無硬體桌面預覽檢查。未重新完整編譯，也未自動進行實車導航測試。上傳的是目前可審閱的來源快照，不是安全認證結果。部分原始套件 license 仍為 TODO，保留原始聲明。
